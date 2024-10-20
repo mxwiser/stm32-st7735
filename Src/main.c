@@ -1,6 +1,6 @@
 #include "main.h"
 #include "stm32f4xx_hal.h"
-
+//颜色是RGB565格式，五位红色，六位绿色，五位蓝色构成的格式。
 /* USER CODE BEGIN Includes */
 /* vim: set ai et ts=4 sw=4: */
 #include <string.h>
