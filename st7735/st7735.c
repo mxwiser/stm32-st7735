@@ -1,6 +1,8 @@
 /* vim: set ai et ts=4 sw=4: */
 #include "stm32f4xx_hal.h"
 #include "st7735.h"
+#include "malloc.h"
+#include "string.h"
 
 #define DELAY 0x80
 
@@ -68,12 +70,12 @@ static const uint8_t
 
   init_cmds3[] = {            // Init for 7735R, part 3 (red or green tab)
     4,                        //  4 commands in list:
-    ST7735_GMCTRP1, 16      , //  1: Magical unicorn dust, 16 args, no delay:
+    ST7735_GMCTRP1, 16      , //  1: Gamma Adjustments (pos. polarity), 16 args, no delay:
       0x02, 0x1c, 0x07, 0x12,
       0x37, 0x32, 0x29, 0x2d,
       0x29, 0x25, 0x2B, 0x39,
       0x00, 0x01, 0x03, 0x10,
-    ST7735_GMCTRN1, 16      , //  2: Sparkles and rainbows, 16 args, no delay:
+    ST7735_GMCTRN1, 16      , //  2: Gamma Adjustments (neg. polarity), 16 args, no delay:
       0x03, 0x1d, 0x07, 0x06,
       0x2E, 0x2C, 0x29, 0x2D,
       0x2E, 0x2E, 0x37, 0x3F,
@@ -253,8 +255,35 @@ void ST7735_FillRectangle(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16
     ST7735_Unselect();
 }
 
+void ST7735_FillRectangleFast(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t color) {
+    // clipping
+    if((x >= ST7735_WIDTH) || (y >= ST7735_HEIGHT)) return;
+    if((x + w - 1) >= ST7735_WIDTH) w = ST7735_WIDTH - x;
+    if((y + h - 1) >= ST7735_HEIGHT) h = ST7735_HEIGHT - y;
+
+    ST7735_Select();
+    ST7735_SetAddressWindow(x, y, x+w-1, y+h-1);
+
+    // Prepare whole line in a single buffer
+    uint8_t pixel[] = { color >> 8, color & 0xFF };
+    uint8_t *line = malloc(w * sizeof(pixel));
+    for(x = 0; x < w; ++x)
+    	memcpy(line + x * sizeof(pixel), pixel, sizeof(pixel));
+
+    HAL_GPIO_WritePin(ST7735_DC_GPIO_Port, ST7735_DC_Pin, GPIO_PIN_SET);
+    for(y = h; y > 0; y--)
+        HAL_SPI_Transmit(&ST7735_SPI_PORT, line, w * sizeof(pixel), HAL_MAX_DELAY);
+
+    free(line);
+    ST7735_Unselect();
+}
+
 void ST7735_FillScreen(uint16_t color) {
     ST7735_FillRectangle(0, 0, ST7735_WIDTH, ST7735_HEIGHT, color);
+}
+
+void ST7735_FillScreenFast(uint16_t color) {
+    ST7735_FillRectangleFast(0, 0, ST7735_WIDTH, ST7735_HEIGHT, color);
 }
 
 void ST7735_DrawImage(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint16_t* data) {
@@ -274,4 +303,10 @@ void ST7735_InvertColors(bool invert) {
     ST7735_Unselect();
 }
 
-
+void ST7735_SetGamma(GammaDef gamma)
+{
+	ST7735_Select();
+	ST7735_WriteCommand(ST7735_GAMSET);
+	ST7735_WriteData((uint8_t *) &gamma, sizeof(gamma));
+	ST7735_Unselect();
+}
